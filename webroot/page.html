@@ -1,24 +1,83 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta charset="UTF-8" />
-    <title>Web View Example</title>
+    <title>r/populace Simulator</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <h1>This is your page.html</h1>
-    <h3>Your username is <span id="username">Guest</span></h3>
-    <h3>Current counter is at: <span id="counter">0</span></h3>
-    <div class="button-container">
-      <button id="btn-increase">Increase Counter ⬆️</button>
-      <button id="btn-decrease">Decrease Counter ⬇️</button>
+    <!-- Navigation Bar -->
+    <nav id="navbar">
+      <ul>
+        <li><a href="#dashboard" class="nav-link" data-page="dashboard">Dashboard</a></li>
+        <li><a href="#laws" class="nav-link" data-page="laws">Laws</a></li>
+        <li><a href="#polls" class="nav-link" data-page="polls">Polls</a></li>
+        <li><a href="#actions" class="nav-link" data-page="actions">Actions</a></li>
+      </ul>
+    </nav>
+
+    <!-- Page Content Container -->
+    <div id="content">
+      <!-- Dashboard Page -->
+      <section id="dashboard" class="page-section">
+        <h1>Dashboard</h1>
+        <p>Welcome, <span id="username">Guest</span></p>
+        <h2>Statistics</h2>
+        <ul>
+          <li>Military: <span id="military">0</span>%</li>
+          <li>Economy: <span id="economy">0</span>%</li>
+          <li>Healthcare: <span id="healthcare">0</span>%</li>
+          <li>Welfare: <span id="welfare">0</span>%</li>
+          <li>Education: <span id="education">0</span>%</li>
+          <li>Technology: <span id="technology">0</span>%</li>
+        </ul>
+        <p>Overall: <span id="overall">0</span>%</p>
+        <h2>Event History</h2>
+        <div id="eventHistory"></div>
+        <button id="simulateEvent">Simulate AI Event</button>
+      </section>
+
+      <!-- Laws Page -->
+      <section id="laws" class="page-section" style="display: none;">
+        <h1>Laws</h1>
+        <div id="lawHistory"></div>
+        <input type="text" id="lawInput" placeholder="Enter new law" />
+        <button id="draftLaw">Draft Law</button>
+        <h2>Vote on Law</h2>
+        <input type="text" id="lawIdInput" placeholder="Law ID" />
+        <button id="voteLawYes">Vote Yes</button>
+        <button id="voteLawNo">Vote No</button>
+      </section>
+
+      <!-- Polls Page -->
+      <section id="polls" class="page-section" style="display: none;">
+        <h1>Polls</h1>
+        <div>
+          <input type="text" id="senatorInput" placeholder="Senator name" />
+          <button id="voteSenator">Vote Senator</button>
+        </div>
+        <div>
+          <input type="text" id="presidentInput" placeholder="President name" />
+          <button id="votePresident">Vote President</button>
+        </div>
+        <div id="pollResults"></div>
+      </section>
+
+      <!-- Citizen Actions Page -->
+      <section id="actions" class="page-section" style="display: none;">
+        <h1>Citizen Actions</h1>
+        <button id="protest">Protest</button>
+        <button id="coup">Join Coup</button>
+      </section>
     </div>
-    <h3>Last message from Devvit blocks:</h3>
-    <pre id="messageOutput"></pre>
+
+    <!-- System Messages -->
+    <section id="messages">
+      <h2>System Messages</h2>
+      <pre id="messageOutput"></pre>
+    </section>
+    
     <script type="application/javascript" src="script.js"></script>
   </body>
 </html>
