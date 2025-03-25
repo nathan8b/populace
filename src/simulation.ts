@@ -6,7 +6,7 @@ import type { GameState, Law } from './message';
  */
 export function getDefaultState(): GameState {
   return {
-    version: 0, // initial version for optimistic concurrency
+    version: 0, 
     statistics: {
       military: 100,
       economy: 100,
@@ -36,6 +36,7 @@ export function getDefaultState(): GameState {
       president: {},
     },
     lastActionTimes: {},
+    lastExecutiveOrderTime: 0,
   };
 }
 
@@ -53,17 +54,16 @@ async function fetchEventFromOpenAI(
   if (!apiKey) {
     throw new Error("Missing OpenAI API key in environment variable OPENAI_API_KEY");
   }
-
-  // Tailor the effect description based on the tier.
+  
   const effectDescription =
     tier === "minor"
       ? "small, subtle effects"
       : tier === "major"
       ? "moderate effects"
       : "significant, drastic effects";
-
+  
   const prompt = `Generate a JSON formatted event for a political simulator game of ${tier} complexity. Output a JSON object with a "description" (string) and an "effects" object. The "effects" object must include the keys: "military", "economy", "healthcare", "welfare", "education", "technology". For each key, provide an integer value (positive or negative) reflecting ${effectDescription}.`;
-
+  
   const response = await fetch("https://api.openai.com/v1/completions", {
     method: "POST",
     headers: {
@@ -77,7 +77,7 @@ async function fetchEventFromOpenAI(
       temperature: 0.7,
     }),
   });
-
+  
   const result = await response.json();
   const text = result.choices[0].text.trim();
   let eventObj;
@@ -101,14 +101,48 @@ async function fetchEventFromOpenAI(
 }
 
 /**
+ * Uses the OpenAI API to determine if a given law text is relevant to a specified statistic.
+ * The function prompts the LLM to answer only "YES" or "NO", and returns true if the answer is "YES".
+ */
+async function isLawRelevantToStat(lawText: string, stat: string): Promise<boolean> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing OpenAI API key in environment variable OPENAI_API_KEY");
+  }
+  
+  const prompt = `Determine if the following law is related to the "${stat}" statistic in a political simulator game. Respond with only "YES" or "NO". Law text: ${lawText}`;
+  
+  const response = await fetch("https://api.openai.com/v1/completions", {
+    method: "POST",
+    headers: {
+       "Content-Type": "application/json",
+       "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+       model: "text-davinci-003",
+       prompt: prompt,
+       max_tokens: 5,
+       temperature: 0.0,
+    }),
+  });
+  
+  const result = await response.json();
+  const answer = result.choices[0].text.trim().toUpperCase();
+  return answer === "YES";
+}
+
+/**
  * Simulate an AI-generated event that affects statistics.
- * This function randomly selects an event tier (minor, major, or crisis),
- * calls OpenAI to generate the event based on the tier,
- * prefixes the event description with the tier, and applies its effects.
+ * This function:
+ *  - Randomly selects an event tier (minor, major, or crisis)
+ *  - Calls OpenAI to generate the event based on the tier
+ *  - Uses an LLM call to determine for each approved law if it's related to each statistic
+ *  - Adjusts the event's effects based on the number of relevant laws:
+ *       * Negative effects are mitigated by 20% per relevant law.
+ *       * Positive effects are boosted by 10% per relevant law.
  */
 export async function simulateEvent(redis: Redis, state: GameState): Promise<GameState> {
-  // Randomly choose event tier using weighted probabilities:
-  // 70% chance for minor, 25% for major, 5% for crisis.
+  // Choose event tier: 70% minor, 25% major, 5% crisis.
   const rand = Math.random();
   let tier: "minor" | "major" | "crisis";
   if (rand < 0.7) {
@@ -118,30 +152,50 @@ export async function simulateEvent(redis: Redis, state: GameState): Promise<Gam
   } else {
     tier = "crisis";
   }
-
-  // Fetch an event from OpenAI with the selected tier.
+  
+  // Generate the event.
   const event = await fetchEventFromOpenAI(tier);
-
-  // Prefix the event description with its tier.
   event.description = `[${tier.toUpperCase()}] ${event.description}`;
-
-  // Apply each effect to the corresponding statistic.
+  
+  // Filter approved laws.
+  const approvedLaws = state.laws.filter(law => law.status === "approved");
+  
+  // For each statistic, check each approved law's relevance using LLM.
   for (const key in event.effects) {
     if (state.statistics.hasOwnProperty(key)) {
-      state.statistics[key] = Math.max(state.statistics[key] + event.effects[key], 0);
+      let relevantCount = 0;
+      for (const law of approvedLaws) {
+        const isRelevant = await isLawRelevantToStat(law.text, key);
+        if (isRelevant) {
+          relevantCount++;
+        }
+      }
+      
+      let modifier = 1;
+      if (relevantCount > 0) {
+        if (event.effects[key] < 0) {
+          modifier = 1 + 0.2 * relevantCount; // mitigate negative effects
+        } else if (event.effects[key] > 0) {
+          modifier = 1 + 0.1 * relevantCount; // boost positive effects
+        }
+      }
+      
+      const adjustedEffect = event.effects[key] * modifier;
+      state.statistics[key] = Math.max(state.statistics[key] + adjustedEffect, 0);
     }
   }
+  
   state.eventHistory.push(event.description);
-
-  // Recalculate overall statistic (average).
+  
+  // Recalculate overall average statistic.
   const stats = Object.values(state.statistics);
   const overall = stats.reduce((a, b) => a + b, 0) / stats.length;
   if (overall === 0) {
     state = getDefaultState();
     state.eventHistory.push("Country collapsed! Restarting simulation.");
   }
-
-  // Increment version to signal a state update.
+  
+  // Increment version and save state.
   state.version = (state.version || 0) + 1;
   await redis.set('gameState', JSON.stringify(state));
   return state;
@@ -149,7 +203,6 @@ export async function simulateEvent(redis: Redis, state: GameState): Promise<Gam
 
 /**
  * Draft a new law.
- * Creates a pending law that must be voted on by senators.
  */
 export async function draftLaw(redis: Redis, state: GameState, lawText: string): Promise<GameState> {
   const newLaw: Law = {
@@ -170,7 +223,8 @@ export async function draftLaw(redis: Redis, state: GameState, lawText: string):
 /**
  * Senators vote on a law.
  * Enforces that each senator can vote only once on a given law.
- * When votes in favor reach 2/3 of all senators, the law is marked as approved.
+ * When votes in favor reach 2/3 of all senators, the law's status is set to "awaiting_president"
+ * so that the president must take action.
  */
 export async function voteOnLaw(
   redis: Redis,
@@ -182,11 +236,10 @@ export async function voteOnLaw(
   if (!state.positionsOfPower.senators.includes(voter)) {
     throw new Error("Only senators can vote on laws.");
   }
-  const law = state.laws.find((l) => l.id === lawId);
+  const law = state.laws.find(l => l.id === lawId);
   if (!law) {
     throw new Error("Law not found.");
   }
-  // Enforce single vote per senator for this law.
   if (law.votes[voter] !== undefined) {
     throw new Error("You have already voted on this law.");
   }
@@ -198,7 +251,8 @@ export async function voteOnLaw(
   }
   const totalSenators = state.positionsOfPower.senators.length;
   if (law.votesFor >= (2 / 3) * totalSenators) {
-    law.status = "approved"; // Law is forwarded to the president for signature.
+    // Instead of immediately approving, flag for presidential review.
+    law.status = "awaiting_president";
   }
   state.version++;
   await redis.set('gameState', JSON.stringify(state));
@@ -206,8 +260,93 @@ export async function voteOnLaw(
 }
 
 /**
+ * The president can pass a law that is awaiting presidential review.
+ */
+export async function passLawByPresident(
+  redis: Redis,
+  state: GameState,
+  voter: string,
+  lawId: string
+): Promise<GameState> {
+  if (voter !== state.positionsOfPower.president) {
+    throw new Error("Only the president can pass laws.");
+  }
+  const law = state.laws.find(l => l.id === lawId);
+  if (!law) {
+    throw new Error("Law not found.");
+  }
+  if (law.status !== "awaiting_president") {
+    throw new Error("Law is not awaiting presidential action.");
+  }
+  law.status = "passed";
+  state.lawHistory.push(`Law "${law.text}" passed by president.`);
+  state.version++;
+  await redis.set('gameState', JSON.stringify(state));
+  return state;
+}
+
+/**
+ * The president can veto a law that is awaiting presidential review.
+ */
+export async function vetoLawByPresident(
+  redis: Redis,
+  state: GameState,
+  voter: string,
+  lawId: string
+): Promise<GameState> {
+  if (voter !== state.positionsOfPower.president) {
+    throw new Error("Only the president can veto laws.");
+  }
+  const law = state.laws.find(l => l.id === lawId);
+  if (!law) {
+    throw new Error("Law not found.");
+  }
+  if (law.status !== "awaiting_president") {
+    throw new Error("Law is not awaiting presidential action.");
+  }
+  law.status = "vetoed";
+  state.lawHistory.push(`Law "${law.text}" vetoed by president.`);
+  state.version++;
+  await redis.set('gameState', JSON.stringify(state));
+  return state;
+}
+
+/**
+ * The president can issue an executive order once per week.
+ * The order directly adjusts statistics according to the provided effects.
+ */
+export async function executiveOrder(
+  redis: Redis,
+  state: GameState,
+  voter: string,
+  order: { description: string; effects: Record<string, number> }
+): Promise<GameState> {
+  if (voter !== state.positionsOfPower.president) {
+    throw new Error("Only the president can issue executive orders.");
+  }
+  const now = Date.now();
+  const oneWeek = 7 * 24 * 3600 * 1000;
+  if (now - (state.lastExecutiveOrderTime || 0) < oneWeek) {
+    throw new Error("Executive orders can only be issued once per week.");
+  }
+  
+  // Apply the order's effects directly to statistics.
+  for (const key in order.effects) {
+    if (state.statistics.hasOwnProperty(key)) {
+      state.statistics[key] = Math.max(state.statistics[key] + order.effects[key], 0);
+    }
+  }
+  
+  state.eventHistory.push(`[EXECUTIVE ORDER] ${order.description}`);
+  state.lastExecutiveOrderTime = now;
+  state.version++;
+  await redis.set('gameState', JSON.stringify(state));
+  return state;
+}
+
+/**
  * Vote for a senator.
- * Enforces that each citizen can only vote for a senator once every two weeks.
+ * Enforces that each citizen can vote for a senator only once every two weeks.
  */
 export async function voteSenator(
   redis: Redis,
@@ -233,7 +372,7 @@ export async function voteSenator(
 
 /**
  * Vote for a president.
- * Enforces that each citizen can only vote for president once every month.
+ * Enforces that each citizen can vote for president only once every month.
  */
 export async function votePresident(
   redis: Redis,
@@ -252,7 +391,6 @@ export async function votePresident(
     state.polls.presidentVotes[candidate] = 0;
   }
   state.polls.presidentVotes[candidate] += 1;
-  // For simplicity, assign the candidate as president immediately.
   state.positionsOfPower.president = candidate;
   state.version++;
   await redis.set('gameState', JSON.stringify(state));
@@ -261,7 +399,7 @@ export async function votePresident(
 
 /**
  * Senators vote to impeach the president.
- * Requires a 3/4 majority of senators to pass impeachment.
+ * Impeachment passes if 3/4 of senators vote in favor.
  */
 export async function voteToImpeach(
   redis: Redis,
@@ -279,7 +417,7 @@ export async function voteToImpeach(
     throw new Error("You have already voted for impeachment.");
   }
   state.polls.impeachmentVotes[voter] = vote;
-  const votesFor = Object.values(state.polls.impeachmentVotes).filter((v) => v).length;
+  const votesFor = Object.values(state.polls.impeachmentVotes).filter(v => v).length;
   const totalSenators = state.positionsOfPower.senators.length;
   if (votesFor >= (3 / 4) * totalSenators) {
     state.positionsOfPower.president = null;
@@ -294,7 +432,10 @@ export async function voteToImpeach(
  * Update the list of senators.
  * Automatically selects up to 40 candidates with the highest senator vote counts.
  */
-export async function updateSenators(redis: Redis, state: GameState): Promise<GameState> {
+export async function updateSenators(
+  redis: Redis,
+  state: GameState
+): Promise<GameState> {
   const candidates = Object.entries(state.polls.senatorVotes);
   candidates.sort((a, b) => b[1] - a[1]);
   state.positionsOfPower.senators = candidates.slice(0, 40).map(([candidate]) => candidate);
@@ -305,8 +446,7 @@ export async function updateSenators(redis: Redis, state: GameState): Promise<Ga
 
 /**
  * Protest action increases the protest percentage.
- * Enforces a per-user cooldown (5 minutes) before the same user can protest again.
- * When protests reach 30%, it negatively affects the welfare statistic.
+ * Enforces a per-user cooldown (5 minutes). When protests reach 30%, the welfare statistic is decreased.
  */
 export async function protest(
   redis: Redis,
@@ -337,8 +477,7 @@ export async function protest(
 
 /**
  * Join coup increases the coup percentage.
- * Enforces a per-user cooldown (5 minutes) before the same user can join a coup again.
- * When the coup percentage reaches 70%, the government collapses and the simulation resets.
+ * Enforces a per-user cooldown (5 minutes). When coup percentage reaches 70%, the government collapses and the simulation resets.
  */
 export async function joinCoup(
   redis: Redis,

@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <!-- Navigation Bar -->
+    <!-- Navigation Bar (visible to everyone) -->
     <nav id="navbar">
       <ul>
         <li><a href="#dashboard" class="nav-link" data-page="dashboard">Dashboard</a></li>
@@ -17,9 +17,9 @@
       </ul>
     </nav>
 
-    <!-- Page Content Container -->
+    <!-- Content Container -->
     <div id="content">
-      <!-- Dashboard Page -->
+      <!-- Dashboard Section -->
       <section id="dashboard" class="page-section">
         <h1>Dashboard</h1>
         <p>Welcome, <span id="username">Guest</span></p>
@@ -35,23 +35,57 @@
         <p>Overall: <span id="overall">0</span>%</p>
         <h2>Event History</h2>
         <div id="eventHistory"></div>
+        <!-- This button is for Admins (and maybe others) to enter events manually -->
         <button id="simulateEvent">Simulate AI Event</button>
       </section>
-
-      <!-- Laws Page -->
-      <section id="laws" class="page-section" style="display: none;">
+      
+      <!-- Laws Section -->
+      <section id="laws" class="page-section" style="display:none;">
         <h1>Laws</h1>
-        <div id="lawHistory"></div>
-        <input type="text" id="lawInput" placeholder="Enter new law" />
-        <button id="draftLaw">Draft Law</button>
-        <h2>Vote on Law</h2>
-        <input type="text" id="lawIdInput" placeholder="Law ID" />
-        <button id="voteLawYes">Vote Yes</button>
-        <button id="voteLawNo">Vote No</button>
+        <!-- For Senators and Admin: Propose a New Law -->
+        <div id="proposalSection">
+          <h2>Draft a New Law</h2>
+          <input type="text" id="lawInput" placeholder="Enter new law" />
+          <button id="draftLaw">Draft Law</button>
+        </div>
+        
+        <!-- For Senators: Proposed Laws List with Vote Buttons -->
+        <div id="proposedLawListSection">
+          <h2>Proposed Laws</h2>
+          <div id="proposedLawList" style="max-height:300px; overflow-y:auto;"></div>
+        </div>
+        
+        <!-- For President and all roles: Finalized Law History -->
+        <div id="finalizedLawSection">
+          <h2>Finalized Law History</h2>
+          <div id="lawHistory"></div>
+        </div>
+        
+        <!-- For President only: Controls for passing/vetoing laws -->
+        <div id="presidentLawActions" style="display:none;">
+          <h2>Presidential Law Actions</h2>
+          <input type="text" id="lawIdInput" placeholder="Enter Law ID for action" />
+          <button id="passLaw">Pass Law</button>
+          <button id="vetoLaw">Veto Law</button>
+        </div>
+        
+        <!-- For President: Executive Order Controls -->
+        <div id="execOrderControls" style="display:none;">
+          <h2>Executive Order</h2>
+          <input type="text" id="execOrderInput" placeholder="Describe executive order" />
+          <input type="text" id="execOrderEffects" placeholder='Enter effects as JSON, e.g., {"economy":10}' />
+          <button id="issueExecOrder">Issue Executive Order</button>
+        </div>
+        
+        <!-- Executive Order History (visible to all roles) -->
+        <div id="execOrderHistorySection">
+          <h2>Executive Order History</h2>
+          <div id="executiveOrderHistory"></div>
+        </div>
       </section>
-
-      <!-- Polls Page -->
-      <section id="polls" class="page-section" style="display: none;">
+      
+      <!-- Polls Section -->
+      <section id="polls" class="page-section" style="display:none;">
         <h1>Polls</h1>
         <div>
           <input type="text" id="senatorInput" placeholder="Senator name" />
@@ -63,15 +97,15 @@
         </div>
         <div id="pollResults"></div>
       </section>
-
-      <!-- Citizen Actions Page -->
-      <section id="actions" class="page-section" style="display: none;">
+      
+      <!-- Actions Section -->
+      <section id="actions" class="page-section" style="display:none;">
         <h1>Citizen Actions</h1>
         <button id="protest">Protest</button>
         <button id="coup">Join Coup</button>
       </section>
     </div>
-
+    
     <!-- System Messages -->
     <section id="messages">
       <h2>System Messages</h2>

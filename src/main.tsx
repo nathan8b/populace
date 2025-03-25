@@ -1,25 +1,35 @@
-import './createPost.js';
+import './createPost.tsx';
 import { Devvit, useState, useWebView } from '@devvit/public-api';
 import type { DevvitMessage, WebViewMessage } from './message.js';
 import * as simulation from './simulation.js';
-import 'dotenv/config';
 
 Devvit.configure({
   redditAPI: true,
   redis: true,
 });
 
-// Add a custom post type for the r/populace Simulator
+// Add a custom post type for the r/populace Simulator.
 Devvit.addCustomPostType({
   name: 'r/populace Simulator',
   height: 'tall',
   render: (context) => {
-    // Load the current authenticated username from Devvit
+    // Retrieve the current authenticated username.
     const [username] = useState(async () => {
       return (await context.reddit.getCurrentUsername()) ?? 'anon';
     });
 
-    // Load the current game state from Redis, initializing if needed.
+    // Assign a role based on the username.
+    const [role] = useState(async () => {
+      const currentUser = await context.reddit.getCurrentUsername();
+      // Hard-code admin assignment for the two specified usernames.
+      if (currentUser === 'ban8_' || currentUser === 'PlanktonOk3398') {
+        return 'admin';
+      }
+      // You can insert additional logic here to assign president, senator, etc.
+      return 'citizen';
+    });
+
+    // Load or initialize the game state from Redis.
     const [gameState, setGameState] = useState(async () => {
       const storedState = await context.redis.get('gameState');
       if (storedState) {
@@ -31,6 +41,7 @@ Devvit.addCustomPostType({
       }
     });
 
+    // Set up the web view.
     const webView = useWebView<WebViewMessage, DevvitMessage>({
       url: 'page.html',
       async onMessage(message, webView) {
@@ -39,14 +50,13 @@ Devvit.addCustomPostType({
           case 'webViewReady':
             webView.postMessage({
               type: 'initialData',
-              data: { username: username, gameState: gameState },
+              data: { username, role, gameState },
             });
             break;
           case 'getGameState':
-            // Polling request – send back the current game state
             webView.postMessage({
               type: 'updateGameState',
-              data: { gameState: gameState },
+              data: { username, role, gameState },
             });
             break;
           case 'simulateEvent':
@@ -54,7 +64,7 @@ Devvit.addCustomPostType({
             setGameState(updatedState);
             webView.postMessage({
               type: 'updateGameState',
-              data: { gameState: updatedState },
+              data: { username, role, gameState: updatedState },
             });
             break;
           case 'draftLaw':
@@ -62,11 +72,10 @@ Devvit.addCustomPostType({
             setGameState(updatedState);
             webView.postMessage({
               type: 'updateGameState',
-              data: { gameState: updatedState },
+              data: { username, role, gameState: updatedState },
             });
             break;
           case 'voteOnLaw':
-            // Use the authenticated username rather than a client-supplied voter
             updatedState = await simulation.voteOnLaw(
               context.redis,
               gameState,
@@ -77,7 +86,7 @@ Devvit.addCustomPostType({
             setGameState(updatedState);
             webView.postMessage({
               type: 'updateGameState',
-              data: { gameState: updatedState },
+              data: { username, role, gameState: updatedState },
             });
             break;
           case 'voteSenator':
@@ -90,7 +99,7 @@ Devvit.addCustomPostType({
             setGameState(updatedState);
             webView.postMessage({
               type: 'updateGameState',
-              data: { gameState: updatedState },
+              data: { username, role, gameState: updatedState },
             });
             break;
           case 'votePresident':
@@ -103,7 +112,7 @@ Devvit.addCustomPostType({
             setGameState(updatedState);
             webView.postMessage({
               type: 'updateGameState',
-              data: { gameState: updatedState },
+              data: { username, role, gameState: updatedState },
             });
             break;
           case 'voteImpeach':
@@ -116,33 +125,46 @@ Devvit.addCustomPostType({
             setGameState(updatedState);
             webView.postMessage({
               type: 'updateGameState',
-              data: { gameState: updatedState },
+              data: { username, role, gameState: updatedState },
             });
             break;
-          case 'protest':
-            updatedState = await simulation.protest(
+          case 'passLawByPresident':
+            updatedState = await simulation.passLawByPresident(
               context.redis,
               gameState,
               username,
-              message.data.protestAmount
+              message.data.lawId
             );
             setGameState(updatedState);
             webView.postMessage({
               type: 'updateGameState',
-              data: { gameState: updatedState },
+              data: { username, role, gameState: updatedState },
             });
             break;
-          case 'joinCoup':
-            updatedState = await simulation.joinCoup(
+          case 'vetoLawByPresident':
+            updatedState = await simulation.vetoLawByPresident(
               context.redis,
               gameState,
               username,
-              message.data.coupAmount
+              message.data.lawId
             );
             setGameState(updatedState);
             webView.postMessage({
               type: 'updateGameState',
-              data: { gameState: updatedState },
+              data: { username, role, gameState: updatedState },
+            });
+            break;
+          case 'executiveOrder':
+            updatedState = await simulation.executiveOrder(
+              context.redis,
+              gameState,
+              username,
+              message.data
+            );
+            setGameState(updatedState);
+            webView.postMessage({
+              type: 'updateGameState',
+              data: { username, role, gameState: updatedState },
             });
             break;
           default:
@@ -153,7 +175,8 @@ Devvit.addCustomPostType({
         context.ui.showToast('r/populace Simulator closed!');
       },
     });
-
+    
+    // Render the custom post type UI.
     return (
       <vstack grow padding="small">
         <vstack grow alignment="middle center">
@@ -164,9 +187,11 @@ Devvit.addCustomPostType({
           <vstack alignment="start middle">
             <hstack>
               <text size="medium">Username:</text>
-              <text size="medium" weight="bold">
-                {username ?? ''}
-              </text>
+              <text size="medium" weight="bold"> {username ?? ''}</text>
+            </hstack>
+            <hstack>
+              <text size="medium">Role:</text>
+              <text size="medium" weight="bold"> {role ?? ''}</text>
             </hstack>
           </vstack>
           <spacer />

@@ -31,7 +31,9 @@ export type WebViewMessage =
 /**
  * Extended GameState type representing the simulation state.
  */
+
 export type GameState = {
+  version: number;
   statistics: {
     military: number;
     economy: number;
@@ -41,24 +43,25 @@ export type GameState = {
     technology: number;
   };
   eventHistory: string[];
-  lawHistory: string[]; // history log for laws that have completed the process
-  laws: Law[]; // active laws pending senate vote or awaiting presidential signature
+  lawHistory: string[];
+  laws: Law[];
   polls: {
-    senatorVotes: Record<string, number>;     // cumulative votes per candidate for senator
-    presidentVotes: Record<string, number>;     // cumulative votes per candidate for president
-    impeachmentVotes?: Record<string, boolean>;   // record of impeachment votes by senators
+    senatorVotes: Record<string, number>;
+    presidentVotes: Record<string, number>;
+    impeachmentVotes: Record<string, boolean>;
   };
   citizenActions: {
     protestPercentage: number;
     coupPercentage: number;
   };
   positionsOfPower: {
-    senators: string[]; // list of usernames (up to 40) selected as senators
+    senators: string[];
     president: string | null;
   };
   votingRecords: {
-    senator: Record<string, number>;   // tracks last senator vote timestamp per voter (in ms)
-    president: Record<string, number>;   // tracks last president vote timestamp per voter (in ms)
+    senator: Record<string, number>;
+    president: Record<string, number>;
   };
-  lastActionTimes: Record<string, { protest: number; coup: number }>; // cooldowns per user (ms timestamps)
+  lastActionTimes: Record<string, { protest: number; coup: number }>;
+  lastExecutiveOrderTime: number; // <-- Add this property
 };
