@@ -3,6 +3,17 @@ import { Devvit, useState, useWebView } from '@devvit/public-api';
 import type { DevvitMessage, WebViewMessage } from './message.js';
 import * as simulation from './simulation.js';
 
+// 🔐 Define the OpenAI API key as a secret
+Devvit.addSettings([
+  {
+    name: 'open-ai-api-key',
+    label: 'OpenAI API Key',
+    type: 'string',
+    isSecret: true,
+    scope: 'app',
+  },
+]);
+
 Devvit.configure({
   redditAPI: true,
   redis: true,
