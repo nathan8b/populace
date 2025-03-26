@@ -71,8 +71,7 @@ Devvit.addCustomPostType({
             });
             break;
           case 'simulateEvent':
-            updatedState = await simulation.simulateEvent(context.redis, gameState);
-            setGameState(updatedState);
+            updatedState = await simulation.simulateEvent(context.redis, gameState, context.settings);            setGameState(updatedState);
             webView.postMessage({
               type: 'updateGameState',
               data: { username, role, gameState: updatedState },

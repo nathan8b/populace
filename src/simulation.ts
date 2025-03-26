@@ -6,7 +6,7 @@ import type { GameState, Law } from './message';
  */
 export function getDefaultState(): GameState {
   return {
-    version: 0, 
+    version: 0,
     statistics: {
       military: 100,
       economy: 100,
@@ -46,24 +46,28 @@ export function getDefaultState(): GameState {
  * - description: a string describing the event.
  * - effects: an object with keys: military, economy, healthcare, welfare, education, technology.
  * The prompt is tailored based on the event tier.
+ *
+ * @param settings - an object with a get function to retrieve secrets (e.g., context.settings)
+ * @param tier - event tier ("minor" | "major" | "crisis")
  */
 async function fetchEventFromOpenAI(
+  settings: { get: (name: string) => Promise<string> } | undefined,
   tier: "minor" | "major" | "crisis"
 ): Promise<{ description: string; effects: Record<string, number> }> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = settings ? await settings.get('open-ai-api-key') : process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    throw new Error("Missing OpenAI API key in environment variable OPENAI_API_KEY");
+    throw new Error("Missing OpenAI API key");
   }
-  
+
   const effectDescription =
     tier === "minor"
       ? "small, subtle effects"
       : tier === "major"
       ? "moderate effects"
       : "significant, drastic effects";
-  
+
   const prompt = `Generate a JSON formatted event for a political simulator game of ${tier} complexity. Output a JSON object with a "description" (string) and an "effects" object. The "effects" object must include the keys: "military", "economy", "healthcare", "welfare", "education", "technology". For each key, provide an integer value (positive or negative) reflecting ${effectDescription}.`;
-  
+
   const response = await fetch("https://api.openai.com/v1/completions", {
     method: "POST",
     headers: {
@@ -77,7 +81,7 @@ async function fetchEventFromOpenAI(
       temperature: 0.7,
     }),
   });
-  
+
   const result = await response.json();
   const text = result.choices[0].text.trim();
   let eventObj;
@@ -103,29 +107,37 @@ async function fetchEventFromOpenAI(
 /**
  * Uses the OpenAI API to determine if a given law text is relevant to a specified statistic.
  * The function prompts the LLM to answer only "YES" or "NO", and returns true if the answer is "YES".
+ *
+ * @param settings - an object with a get function to retrieve secrets (e.g., context.settings)
+ * @param lawText - the text of the law to evaluate
+ * @param stat - the statistic to check relevance for
  */
-async function isLawRelevantToStat(lawText: string, stat: string): Promise<boolean> {
-  const apiKey = process.env.OPENAI_API_KEY;
+async function isLawRelevantToStat(
+  settings: { get: (name: string) => Promise<string> } | undefined,
+  lawText: string,
+  stat: string
+): Promise<boolean> {
+  const apiKey = settings ? await settings.get('open-ai-api-key') : process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    throw new Error("Missing OpenAI API key in environment variable OPENAI_API_KEY");
+    throw new Error("Missing OpenAI API key");
   }
-  
+
   const prompt = `Determine if the following law is related to the "${stat}" statistic in a political simulator game. Respond with only "YES" or "NO". Law text: ${lawText}`;
-  
+
   const response = await fetch("https://api.openai.com/v1/completions", {
     method: "POST",
     headers: {
-       "Content-Type": "application/json",
-       "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-       model: "text-davinci-003",
-       prompt: prompt,
-       max_tokens: 5,
-       temperature: 0.0,
+      model: "text-davinci-003",
+      prompt: prompt,
+      max_tokens: 5,
+      temperature: 0.0,
     }),
   });
-  
+
   const result = await response.json();
   const answer = result.choices[0].text.trim().toUpperCase();
   return answer === "YES";
@@ -140,8 +152,16 @@ async function isLawRelevantToStat(lawText: string, stat: string): Promise<boole
  *  - Adjusts the event's effects based on the number of relevant laws:
  *       * Negative effects are mitigated by 20% per relevant law.
  *       * Positive effects are boosted by 10% per relevant law.
+ *
+ * @param redis - Redis instance to store/retrieve game state
+ * @param state - current game state
+ * @param settings - an object with a get function to retrieve secrets (e.g., context.settings)
  */
-export async function simulateEvent(redis: Redis, state: GameState): Promise<GameState> {
+export async function simulateEvent(
+  redis: Redis,
+  state: GameState,
+  settings?: { get: (name: string) => Promise<string> }
+): Promise<GameState> {
   // Choose event tier: 70% minor, 25% major, 5% crisis.
   const rand = Math.random();
   let tier: "minor" | "major" | "crisis";
@@ -152,25 +172,25 @@ export async function simulateEvent(redis: Redis, state: GameState): Promise<Gam
   } else {
     tier = "crisis";
   }
-  
-  // Generate the event.
-  const event = await fetchEventFromOpenAI(tier);
+
+  // Generate the event using the provided settings for API key retrieval.
+  const event = await fetchEventFromOpenAI(settings, tier);
   event.description = `[${tier.toUpperCase()}] ${event.description}`;
-  
+
   // Filter approved laws.
   const approvedLaws = state.laws.filter(law => law.status === "approved");
-  
-  // For each statistic, check each approved law's relevance using LLM.
+
+  // For each statistic, check each approved law's relevance using the settings-based API key.
   for (const key in event.effects) {
     if (state.statistics.hasOwnProperty(key)) {
       let relevantCount = 0;
       for (const law of approvedLaws) {
-        const isRelevant = await isLawRelevantToStat(law.text, key);
+        const isRelevant = await isLawRelevantToStat(settings, law.text, key);
         if (isRelevant) {
           relevantCount++;
         }
       }
-      
+
       let modifier = 1;
       if (relevantCount > 0) {
         if (event.effects[key] < 0) {
@@ -179,14 +199,14 @@ export async function simulateEvent(redis: Redis, state: GameState): Promise<Gam
           modifier = 1 + 0.1 * relevantCount; // boost positive effects
         }
       }
-      
+
       const adjustedEffect = event.effects[key] * modifier;
       state.statistics[key] = Math.max(state.statistics[key] + adjustedEffect, 0);
     }
   }
-  
+
   state.eventHistory.push(event.description);
-  
+
   // Recalculate overall average statistic.
   const stats = Object.values(state.statistics);
   const overall = stats.reduce((a, b) => a + b, 0) / stats.length;
@@ -194,7 +214,7 @@ export async function simulateEvent(redis: Redis, state: GameState): Promise<Gam
     state = getDefaultState();
     state.eventHistory.push("Country collapsed! Restarting simulation.");
   }
-  
+
   // Increment version and save state.
   state.version = (state.version || 0) + 1;
   await redis.set('gameState', JSON.stringify(state));
@@ -204,7 +224,11 @@ export async function simulateEvent(redis: Redis, state: GameState): Promise<Gam
 /**
  * Draft a new law.
  */
-export async function draftLaw(redis: Redis, state: GameState, lawText: string): Promise<GameState> {
+export async function draftLaw(
+  redis: Redis,
+  state: GameState,
+  lawText: string
+): Promise<GameState> {
   const newLaw: Law = {
     id: `law_${Date.now()}`,
     text: lawText,
@@ -329,14 +353,14 @@ export async function executiveOrder(
   if (now - (state.lastExecutiveOrderTime || 0) < oneWeek) {
     throw new Error("Executive orders can only be issued once per week.");
   }
-  
+
   // Apply the order's effects directly to statistics.
   for (const key in order.effects) {
     if (state.statistics.hasOwnProperty(key)) {
       state.statistics[key] = Math.max(state.statistics[key] + order.effects[key], 0);
     }
   }
-  
+
   state.eventHistory.push(`[EXECUTIVE ORDER] ${order.description}`);
   state.lastExecutiveOrderTime = now;
   state.version++;
