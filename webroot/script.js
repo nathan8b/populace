@@ -138,7 +138,9 @@ class App {
     const stats = Object.values(state.statistics);
     const overall = Math.round(stats.reduce((a, b) => a + b, 0) / stats.length);
     if (this.overallEl) this.overallEl.innerText = overall;
-    
+    if (this.eventHistoryEl) {
+      this.eventHistoryEl.innerHTML = state.eventHistory.map(e => `<p>${e}</p>`).join('');
+    }
     // Update finalized law history (visible to all roles).
     if (this.lawHistoryEl) {
       this.lawHistoryEl.innerHTML = state.lawHistory.map(l => `<p>${l}</p>`).join('');

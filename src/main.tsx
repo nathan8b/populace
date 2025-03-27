@@ -14,9 +14,11 @@ Devvit.addSettings([
   },
 ]);
 
+// Enable redditAPI, redis, and http (for fetch)
 Devvit.configure({
   redditAPI: true,
   redis: true,
+  http: true,
 });
 
 // Add a custom post type for the r/populace Simulator.
@@ -36,7 +38,7 @@ Devvit.addCustomPostType({
       if (currentUser === 'ban8_' || currentUser === 'PlanktonOk3398') {
         return 'admin';
       }
-      // You can insert additional logic here to assign president, senator, etc.
+      // Additional logic can assign president, senator, etc.
       return 'citizen';
     });
 
@@ -60,29 +62,58 @@ Devvit.addCustomPostType({
         switch (message.type) {
           case 'webViewReady':
             webView.postMessage({
-              type: 'initialData',
-              data: { username, role, gameState },
+              type: 'devvit-message',
+              data: {
+                message: {
+                  type: 'initialData',
+                  data: { username, role, gameState },
+                },
+              },
             });
             break;
           case 'getGameState':
             webView.postMessage({
-              type: 'updateGameState',
-              data: { username, role, gameState },
+              type: 'devvit-message',
+              data: {
+                message: {
+                  type: 'updateGameState',
+                  data: { username, role, gameState },
+                },
+              },
             });
             break;
           case 'simulateEvent':
-            updatedState = await simulation.simulateEvent(context.redis, gameState, context.settings);            setGameState(updatedState);
+            updatedState = await simulation.simulateEvent(
+              context.redis,
+              gameState,
+              context.settings
+            );
+            setGameState(updatedState);
             webView.postMessage({
-              type: 'updateGameState',
-              data: { username, role, gameState: updatedState },
+              type: 'devvit-message',
+              data: {
+                message: {
+                  type: 'updateGameState',
+                  data: { username, role, gameState: updatedState },
+                },
+              },
             });
             break;
           case 'draftLaw':
-            updatedState = await simulation.draftLaw(context.redis, gameState, message.data.law);
+            updatedState = await simulation.draftLaw(
+              context.redis,
+              gameState,
+              message.data.law
+            );
             setGameState(updatedState);
             webView.postMessage({
-              type: 'updateGameState',
-              data: { username, role, gameState: updatedState },
+              type: 'devvit-message',
+              data: {
+                message: {
+                  type: 'updateGameState',
+                  data: { username, role, gameState: updatedState },
+                },
+              },
             });
             break;
           case 'voteOnLaw':
@@ -95,8 +126,13 @@ Devvit.addCustomPostType({
             );
             setGameState(updatedState);
             webView.postMessage({
-              type: 'updateGameState',
-              data: { username, role, gameState: updatedState },
+              type: 'devvit-message',
+              data: {
+                message: {
+                  type: 'updateGameState',
+                  data: { username, role, gameState: updatedState },
+                },
+              },
             });
             break;
           case 'voteSenator':
@@ -108,8 +144,13 @@ Devvit.addCustomPostType({
             );
             setGameState(updatedState);
             webView.postMessage({
-              type: 'updateGameState',
-              data: { username, role, gameState: updatedState },
+              type: 'devvit-message',
+              data: {
+                message: {
+                  type: 'updateGameState',
+                  data: { username, role, gameState: updatedState },
+                },
+              },
             });
             break;
           case 'votePresident':
@@ -121,8 +162,13 @@ Devvit.addCustomPostType({
             );
             setGameState(updatedState);
             webView.postMessage({
-              type: 'updateGameState',
-              data: { username, role, gameState: updatedState },
+              type: 'devvit-message',
+              data: {
+                message: {
+                  type: 'updateGameState',
+                  data: { username, role, gameState: updatedState },
+                },
+              },
             });
             break;
           case 'voteImpeach':
@@ -134,8 +180,13 @@ Devvit.addCustomPostType({
             );
             setGameState(updatedState);
             webView.postMessage({
-              type: 'updateGameState',
-              data: { username, role, gameState: updatedState },
+              type: 'devvit-message',
+              data: {
+                message: {
+                  type: 'updateGameState',
+                  data: { username, role, gameState: updatedState },
+                },
+              },
             });
             break;
           case 'passLawByPresident':
@@ -147,8 +198,13 @@ Devvit.addCustomPostType({
             );
             setGameState(updatedState);
             webView.postMessage({
-              type: 'updateGameState',
-              data: { username, role, gameState: updatedState },
+              type: 'devvit-message',
+              data: {
+                message: {
+                  type: 'updateGameState',
+                  data: { username, role, gameState: updatedState },
+                },
+              },
             });
             break;
           case 'vetoLawByPresident':
@@ -160,8 +216,13 @@ Devvit.addCustomPostType({
             );
             setGameState(updatedState);
             webView.postMessage({
-              type: 'updateGameState',
-              data: { username, role, gameState: updatedState },
+              type: 'devvit-message',
+              data: {
+                message: {
+                  type: 'updateGameState',
+                  data: { username, role, gameState: updatedState },
+                },
+              },
             });
             break;
           case 'executiveOrder':
@@ -173,8 +234,13 @@ Devvit.addCustomPostType({
             );
             setGameState(updatedState);
             webView.postMessage({
-              type: 'updateGameState',
-              data: { username, role, gameState: updatedState },
+              type: 'devvit-message',
+              data: {
+                message: {
+                  type: 'updateGameState',
+                  data: { username, role, gameState: updatedState },
+                },
+              },
             });
             break;
           default:

@@ -54,7 +54,8 @@ async function fetchEventFromOpenAI(
   settings: { get: (name: string) => Promise<string> } | undefined,
   tier: "minor" | "major" | "crisis"
 ): Promise<{ description: string; effects: Record<string, number> }> {
-  const apiKey = settings ? await settings.get('open-ai-api-key') : process.env.OPENAI_API_KEY;
+  const apiKey =
+    settings ? await settings.get('open-ai-api-key') : process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("Missing OpenAI API key");
   }
@@ -66,24 +67,24 @@ async function fetchEventFromOpenAI(
       ? "moderate effects"
       : "significant, drastic effects";
 
-  const prompt = `Generate a JSON formatted event for a political simulator game of ${tier} complexity. Output a JSON object with a "description" (string) and an "effects" object. The "effects" object must include the keys: "military", "economy", "healthcare", "welfare", "education", "technology". For each key, provide an integer value (positive or negative) reflecting ${effectDescription}.`;
+  const prompt = `Generate a JSON formatted event for a political simulator game of ${tier} complexity, the events should be challenges for the government to handle with a humorous tone. Output a JSON object with a "description" (string) and an "effects" object. The "effects" object must include the keys: "military", "economy", "healthcare", "welfare", "education", "technology". For each key, provide an integer value (positive or negative) reflecting ${effectDescription}.`;
 
-  const response = await fetch("https://api.openai.com/v1/completions", {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "text-davinci-003",
-      prompt,
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: prompt }],
       max_tokens: 150,
       temperature: 0.7,
     }),
   });
 
   const result = await response.json();
-  const text = result.choices[0].text.trim();
+  const text = result.choices[0].message.content.trim();
   let eventObj;
   try {
     eventObj = JSON.parse(text);
@@ -117,29 +118,30 @@ async function isLawRelevantToStat(
   lawText: string,
   stat: string
 ): Promise<boolean> {
-  const apiKey = settings ? await settings.get('open-ai-api-key') : process.env.OPENAI_API_KEY;
+  const apiKey =
+    settings ? await settings.get('open-ai-api-key') : process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("Missing OpenAI API key");
   }
 
   const prompt = `Determine if the following law is related to the "${stat}" statistic in a political simulator game. Respond with only "YES" or "NO". Law text: ${lawText}`;
 
-  const response = await fetch("https://api.openai.com/v1/completions", {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "text-davinci-003",
-      prompt: prompt,
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: prompt }],
       max_tokens: 5,
       temperature: 0.0,
     }),
   });
 
   const result = await response.json();
-  const answer = result.choices[0].text.trim().toUpperCase();
+  const answer = result.choices[0].message.content.trim().toUpperCase();
   return answer === "YES";
 }
 
@@ -173,14 +175,13 @@ export async function simulateEvent(
     tier = "crisis";
   }
 
-  // Generate the event using the provided settings for API key retrieval.
   const event = await fetchEventFromOpenAI(settings, tier);
   event.description = `[${tier.toUpperCase()}] ${event.description}`;
 
   // Filter approved laws.
   const approvedLaws = state.laws.filter(law => law.status === "approved");
 
-  // For each statistic, check each approved law's relevance using the settings-based API key.
+  // For each statistic, check each approved law's relevance.
   for (const key in event.effects) {
     if (state.statistics.hasOwnProperty(key)) {
       let relevantCount = 0;
@@ -215,7 +216,6 @@ export async function simulateEvent(
     state.eventHistory.push("Country collapsed! Restarting simulation.");
   }
 
-  // Increment version and save state.
   state.version = (state.version || 0) + 1;
   await redis.set('gameState', JSON.stringify(state));
   return state;
@@ -247,8 +247,7 @@ export async function draftLaw(
 /**
  * Senators vote on a law.
  * Enforces that each senator can vote only once on a given law.
- * When votes in favor reach 2/3 of all senators, the law's status is set to "awaiting_president"
- * so that the president must take action.
+ * When votes in favor reach 2/3 of all senators, the law's status is set to "awaiting_president".
  */
 export async function voteOnLaw(
   redis: Redis,
@@ -275,7 +274,7 @@ export async function voteOnLaw(
   }
   const totalSenators = state.positionsOfPower.senators.length;
   if (law.votesFor >= (2 / 3) * totalSenators) {
-    // Instead of immediately approving, flag for presidential review.
+    // Flag for presidential review.
     law.status = "awaiting_president";
   }
   state.version++;
@@ -354,7 +353,7 @@ export async function executiveOrder(
     throw new Error("Executive orders can only be issued once per week.");
   }
 
-  // Apply the order's effects directly to statistics.
+  // Apply the order's effects directly.
   for (const key in order.effects) {
     if (state.statistics.hasOwnProperty(key)) {
       state.statistics[key] = Math.max(state.statistics[key] + order.effects[key], 0);
